@@ -1,0 +1,66 @@
+---
+title: "Single-cell RNAseq of ZFP541 manuscript (10x)"
+author: "Jarning"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: html_document
+---
+
+```{r setup}
+options(stringsAsFactors = F)
+library(Seurat)
+library(tidyverse)
+```
+
+#### Cell annotation
+
+> To be noted, the umap and clustering results may be minor different from which in the paper due to the random seed. To make the following results repeatable, users should adjust the `clusters.annotations.txt` file or download the original `03.seu.QC.batchCorrect.cluster.rds` file. (see `00_download.sh`)
+
+```{r loadData}
+seu <- readRDS("tmp/03.seu.QC.batchCorrect.cluster.rds")
+seu <- subset(seu, orig.ident != "K19")###################exclude K19
+```
+
+```{r annotation, fig.width=10, fig.height=5}
+cluster.annotation <- read_tsv("../data/clusters.annotations.txt") ##############all subset annotation list
+seu$annotation <- plyr::mapvalues(seu$seurat_clusters.reorder, cluster.annotation$cluster_index, cluster.annotation$annotation)
+DimPlot(seu, group.by = "annotation", label = T, label.size = 5, split.by = "orig.ident") + NoLegend()
+```
+
+```{r knownMarkers, fig.width=8, fig.height=5}
+DotPlot(seu, group.by = "annotation",
+        features = c("Dazl","Nanos3",
+                     "Ccnd2","Kit",
+                     "Stra8","Gm4969",
+                     "Dmc1",
+                     "Meiob","Rad51ap2",
+                     "Rpl10","Rpl10l",
+                     "Mybl1","Piwil1",
+                     "Pou5f2","Ccna1",
+                     "Tex36","Acrv1",
+                     "Prm1","Cstl1")) + 
+  labs(x = "", y = "") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r saveData}
+## seurat object
+saveRDS(seu, "../data/seu.QC.batchCorrect.cluster.final.rds")
+
+## metadata
+meta.data <- seu@meta.data
+emb <- FetchData(seu, vars = c("UMAP_1", "UMAP_2"))
+meta.data <- cbind(meta.data, emb[rownames(meta.data), ])
+meta.data <- meta.data %>% mutate(cellID = rownames(meta.data), .before = "orig.ident")
+write_tsv(meta.data, "../data/cell_metadata.tsv")
+
+## matrix
+dir.create("../data/processed_data")
+Matrix::writeMM(seu[["RNA"]]@counts, "../data/processed_data/merged_matrix.mtx")
+writeLines(rownames(seu), "../data/processed_data/merged_features.tsv")
+writeLines(colnames(seu), "../data/processed_data/merged_barcodes.tsv")
+```
+
+```{r info}
+sessionInfo()
+```
+

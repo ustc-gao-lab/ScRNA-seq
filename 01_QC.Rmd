@@ -1,0 +1,60 @@
+---
+title: "Single-cell RNAseq of ZFP541 manuscript (10x)"
+author: "Jarning"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: html_document
+---
+
+```{r setup}
+options(stringsAsFactors = F)
+library(Seurat)
+library(tidyverse)
+```
+
+### Quanlity control
+
+```{r loadData}
+data.mtx <- list(##############################load samples
+  WT = Read10X("../data/matrix/WT/"),
+  Z541 = Read10X("../data/matrix/Zfp541/"),
+  K19 = Read10X("../data/matrix/Kctd19/")
+)
+
+for (i in seq_along(data.mtx)) {
+  colnames(data.mtx[[i]]) <- paste0(names(data.mtx)[i], "_", colnames(data.mtx[[i]]))
+}
+
+lapply(data.mtx, dim)
+
+data.mtx <- do.call(cbind, data.mtx)
+
+dim(data.mtx)##########################combine all data Row:Gene name column: cell
+```
+
+```{r qc, fig.width=5, fig.height=5}
+ribo.genes <- readxl::read_excel("../reference/GO_term_ribosomal_subunit.xlsx")############### Reference
+ribo.genes <- ribo.genes %>% distinct(Symbol) ############# Pick all genes(symbol)
+ribo.genes <- intersect(ribo.genes$Symbol, rownames(data.mtx)) ############pick genes detected in output file
+
+## calculate QC metrics
+seu <- CreateSeuratObject(counts = data.mtx)
+seu[["percent.mt"]] <- PercentageFeatureSet(seu, pattern = "^mt-")################percentage matched to mitochondrial indicating dead cells/poor quality
+seu[["percent.ribo"]] <- PercentageFeatureSet(seu, features = ribo.genes)################percentage matched to ribosome
+
+## plot
+VlnPlot(seu, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo"), ncol = 2, pt.size = 0, log = T)
+
+## cell QC
+seu$QC <- ifelse(seu$percent.mt<=10 & seu$nFeature_RNA>=1000, "pass", "fail")################ QC feature RNA>=1000 mt<=10
+seu@meta.data %>% as_tibble() %>% count(orig.ident, QC)#############calculate pass and fail counts for each sample
+seu.filter <- subset(seu, QC == "pass")
+
+## save data
+dir.create("tmp")
+saveRDS(seu.filter, "tmp/01.seu.QC.rds")
+```
+
+```{r info}
+sessionInfo()
+```
+
